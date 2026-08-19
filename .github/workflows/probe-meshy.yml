@@ -12,51 +12,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch candidate CC0 models
+      - name: Fetch candidate previews
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p /tmp/meshy-probe
-          python - <<'PY'
-          import json,re,subprocess,html,os
-          models={
-            'single_pink':'https://www.meshy.ai/3d-models/Pink-Rose-019dcaa0-9bf6-75e6-92dd-46aca19240cd',
-            'rose_bouquet':'https://www.meshy.ai/3d-models/Rose-Bouquet-v2-019630b3-93c4-77ae-a12d-acb20151ebdf',
-            'baby_breath':'https://www.meshy.ai/3d-models/019d88e5-c2fd-7d8c-ae7e-603067db3458',
-            'pink_splashed':'https://www.meshy.ai/3d-models/PaintSplashed-Pink-Rose-Bouquet-v2-019cd141-ef55-7a08-bdb5-3b1d0a596d64',
-          }
-          out={}
-          for name,url in models.items():
-            fn=f'/tmp/meshy-probe/{name}.html'
-            subprocess.run(['curl','-A','Mozilla/5.0','-L','--fail','--retry','3',url,'-o',fn],check=True)
-            s=open(fn,encoding='utf-8').read()
-            def one(pat):
-              m=re.search(pat,s)
-              return html.unescape(m.group(1).replace('\\u0026','&').replace('\\/','/')) if m else None
-            meta={
-              'url':url,
-              'vertexCount': one(r'\\?"vertexCount\\?":(\d+)'),
-              'faceCount': one(r'\\?"faceCount\\?":(\d+)'),
-              'modelUrl': one(r'\\?"modelUrl\\?":\\?"([^"\\]+(?:\\.[^"\\]*)?)'),
-              'thumbnail': one(r'\\?"thumbnailNoBgUrl\\?":\\?"([^"\\]+(?:\\.[^"\\]*)?)'),
-              'thumbnailPortrait': one(r'\\?"thumbnailUrl\\?":\\?"([^"\\]+(?:\\.[^"\\]*)?)'),
-            }
-            # robust fallback for URLs that include query strings / escaped characters
-            for k,key in [('modelUrl','modelUrl'),('thumbnail','thumbnailNoBgUrl'),('thumbnailPortrait','thumbnailUrl')]:
-              if not meta[k]:
-                m=re.search(r'\\?"'+key+r'\\?":\\?"(https:[^" ]+?)\\?"',s)
-                if m: meta[k]=m.group(1).replace('\\u0026','&').replace('\\/','/')
-            out[name]=meta
-            thumb=meta['thumbnail'] or meta['thumbnailPortrait']
-            if thumb:
-              subprocess.run(['curl','-L','--fail','--retry','3',thumb,'-o',f'/tmp/meshy-probe/{name}.png'],check=False)
-          open('/tmp/meshy-probe/meta.json','w').write(json.dumps(out,ensure_ascii=False,indent=2))
-          print(json.dumps(out,ensure_ascii=False,indent=2))
-          PY
+          curl -L --fail --retry 3 'https://cdn.meshy.ai/uploads/prod/0a772fc6da00b2319d97580fc4d2aa54a738cac709accab08c1b188363bc8a0a/publish/cover-landscape/019d890a-49af-7fdc-8d02-ae09d062fcf2.png' -o /tmp/meshy-probe/baby_breath.png
+          curl -L --fail --retry 3 'https://cdn.meshy.ai/uploads/prod/e81002d71de3690b857d56ea82fccbcf92256c0adcf685b1c82e010eb3f9d013/publish/cover-portrait/019cd720-a5f9-7f92-bb2b-f3e3ebf4cce7.png' -o /tmp/meshy-probe/pink_splashed.png
+          curl -L --fail --retry 3 'https://cdn.meshy.ai/uploads/prod/0e44a571d24054cdc140dee0c8d2a4097ea729b12256af0e49bfc70590dac851/publish/cover-landscape/019630b7-0c6d-7358-a4f4-318f98403cb4.png' -o /tmp/meshy-probe/rose_bouquet.png
+          file /tmp/meshy-probe/*.png
           ls -lh /tmp/meshy-probe
       - name: Upload probe
         uses: actions/upload-artifact@v4
         with:
           name: meshy-probe
           path: /tmp/meshy-probe
-          compression-level: 9
+          compression-level: 0
