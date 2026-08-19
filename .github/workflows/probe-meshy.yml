@@ -1,0 +1,30 @@
+name: Probe Meshy CC0 Rose Asset
+
+on:
+  push:
+    branches: [ v7-highres-rose-mesh ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch candidate previews
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p /tmp/meshy-probe
+          curl -L --fail --retry 3 'https://cdn.meshy.ai/uploads/prod/0a772fc6da00b2319d97580fc4d2aa54a738cac709accab08c1b188363bc8a0a/publish/cover-landscape/019d890a-49af-7fdc-8d02-ae09d062fcf2.png' -o /tmp/meshy-probe/baby_breath.png
+          curl -L --fail --retry 3 'https://cdn.meshy.ai/uploads/prod/e81002d71de3690b857d56ea82fccbcf92256c0adcf685b1c82e010eb3f9d013/publish/cover-portrait/019cd720-a5f9-7f92-bb2b-f3e3ebf4cce7.png' -o /tmp/meshy-probe/pink_splashed.png
+          curl -L --fail --retry 3 'https://cdn.meshy.ai/uploads/prod/0e44a571d24054cdc140dee0c8d2a4097ea729b12256af0e49bfc70590dac851/publish/cover-landscape/019630b7-0c6d-7358-a4f4-318f98403cb4.png' -o /tmp/meshy-probe/rose_bouquet.png
+          file /tmp/meshy-probe/*.png
+          ls -lh /tmp/meshy-probe
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshy-probe
+          path: /tmp/meshy-probe
+          compression-level: 0
