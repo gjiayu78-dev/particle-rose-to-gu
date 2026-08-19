@@ -34,7 +34,7 @@ jobs:
       - name: Capture real runtime at full bouquet state
         env:
           ELECTRON_DISABLE_SECURITY_WARNINGS: 'true'
-        run: xvfb-run -a -s "-screen 0 1920x1080x24" npx electron . --capture-preview
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" npx electron . --no-sandbox --capture-preview
 
       - name: Verify preview
         run: |
