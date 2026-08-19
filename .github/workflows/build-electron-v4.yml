@@ -1,4 +1,4 @@
-name: Build Electron GPU V4
+name: Build Dreamy Pink V5
 
 on:
   pull_request:
@@ -40,14 +40,14 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npx electron-builder --win portable --x64
 
-      - name: Copy artifact to ASCII name
+      - name: Copy artifact to final name
         shell: pwsh
-        run: Copy-Item -LiteralPath "release/to_故辞安.exe" -Destination "release/to-gu-cian-gpu-v4-fixed.exe"
+        run: Copy-Item -LiteralPath "release/to_故辞安.exe" -Destination "release/to-gu-cian-dreamy-pink-v5.exe"
 
       - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: to-gu-cian-gpu-v4-fixed-windows
-          path: release/to-gu-cian-gpu-v4-fixed.exe
+          name: to-gu-cian-dreamy-pink-v5-windows
+          path: release/to-gu-cian-dreamy-pink-v5.exe
           if-no-files-found: error
           compression-level: 0
