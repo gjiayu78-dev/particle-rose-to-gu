@@ -3,6 +3,8 @@ name: Probe Meshy CC0 Rose Asset
 on:
   push:
     branches: [ v7-highres-rose-mesh ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
