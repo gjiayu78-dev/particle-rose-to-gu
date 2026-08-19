@@ -3,6 +3,8 @@ name: Preview V7 High-Res Mesh
 on:
   push:
     branches: [ v7-highres-rose-mesh ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
