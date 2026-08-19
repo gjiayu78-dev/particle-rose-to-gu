@@ -1,0 +1,178 @@
+:root {
+  color-scheme: dark;
+  font-family: Consolas, 'SFMono-Regular', Menlo, Monaco, monospace;
+  background: #010105;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { background: #010105; }
+
+#app {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 69% 50%, rgba(255, 42, 124, .055), transparent 31%),
+    radial-gradient(circle at 73% 48%, rgba(255, 126, 190, .025), transparent 44%),
+    #010105;
+}
+
+#scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#code-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(34vw, 555px);
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  background: linear-gradient(90deg,
+    rgba(4, 6, 10, .69) 0%,
+    rgba(4, 6, 10, .52) 66%,
+    rgba(4, 6, 10, .18) 89%,
+    transparent 100%);
+  opacity: .46;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.editor-rail {
+  padding-top: 67px;
+  border-right: 1px solid rgba(255,255,255,.025);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 27px;
+  background: rgba(3, 5, 9, .31);
+}
+
+.rail-dot {
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(182, 194, 210, .24);
+  border-radius: 2px;
+}
+.rail-dot.active {
+  border-color: rgba(255, 91, 159, .65);
+  box-shadow: 0 0 10px rgba(255, 67, 143, .25);
+}
+
+.editor-body {
+  padding: 43px 28px 30px 18px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editor-header {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(198, 204, 215, .46);
+  font-size: 12px;
+  letter-spacing: .02em;
+  border-bottom: 1px solid rgba(255,255,255,.025);
+}
+.file-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff579e;
+  box-shadow: 0 0 10px rgba(255,87,158,.55);
+}
+.running {
+  margin-left: auto;
+  color: rgba(121, 217, 157, .45);
+  font-size: 10px;
+  letter-spacing: .10em;
+}
+
+.code-window {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  padding-top: 16px;
+  mask-image: linear-gradient(to bottom, transparent 0, black 5%, black 92%, transparent 100%);
+}
+
+.code-line {
+  min-height: 21px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  color: rgba(210, 214, 223, .55);
+  font-size: clamp(10px, .82vw, 13px);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transform: translateY(6px);
+  opacity: 0;
+  animation: lineIn .3s ease forwards;
+}
+.code-line .ln {
+  color: rgba(92, 102, 115, .27);
+  text-align: right;
+  padding-right: 11px;
+  user-select: none;
+}
+.code-line .kw { color: rgba(216, 131, 217, .67); }
+.code-line .fn { color: rgba(111, 183, 241, .69); }
+.code-line .str { color: rgba(224, 183, 115, .65); }
+.code-line .num { color: rgba(182, 206, 138, .68); }
+.code-line .comment { color: rgba(103, 119, 133, .58); }
+.code-line .log { color: rgba(134, 201, 157, .62); }
+.code-line .target { color: rgba(255, 126, 180, .83); text-shadow: 0 0 11px rgba(255, 75, 151, .18); }
+
+.terminal-line {
+  height: 29px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255,255,255,.025);
+  color: rgba(125, 207, 158, .44);
+  font-size: 10px;
+}
+
+#final-message {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(.94);
+  opacity: 0;
+  color: rgba(255, 235, 246, .98);
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif;
+  font-size: clamp(48px, 6vw, 96px);
+  font-weight: 500;
+  letter-spacing: .065em;
+  text-shadow:
+    0 0 11px rgba(255, 181, 218, .68),
+    0 0 30px rgba(255, 75, 151, .40),
+    0 0 60px rgba(255, 48, 136, .18);
+  z-index: 5;
+  pointer-events: none;
+}
+
+#hint {
+  position: absolute;
+  right: 22px;
+  bottom: 16px;
+  color: rgba(200, 207, 218, .16);
+  font-size: 10px;
+  letter-spacing: .08em;
+  z-index: 4;
+}
+
+@keyframes lineIn {
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@media (max-width: 1180px) {
+  #code-stage { width: 38vw; grid-template-columns: 34px 1fr; }
+  .editor-body { padding-left: 14px; padding-right: 15px; }
+}
