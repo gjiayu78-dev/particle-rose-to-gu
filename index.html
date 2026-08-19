@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>to 故辞安</title>
+  <script type="module" src="/src/main.js"></script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="scene"></canvas>
+
+    <section id="code-stage" aria-label="code animation">
+      <div class="editor-rail">
+        <span class="rail-dot active"></span>
+        <span class="rail-dot"></span>
+        <span class="rail-dot"></span>
+        <span class="rail-dot"></span>
+      </div>
+      <div class="editor-body">
+        <div class="editor-header">
+          <span class="file-dot"></span>
+          <span>rose_field.glsl</span>
+          <span class="running">● RUNNING</span>
+        </div>
+        <div class="code-window" id="code-window"></div>
+        <div class="terminal-line" id="terminal-line">shader pipeline ready</div>
+      </div>
+    </section>
+
+    <div id="final-message">to 故辞安</div>
+    <div id="hint">ESC 退出 · F11 全屏 · Ctrl+R 重播</div>
+  </div>
+</body>
+</html>
