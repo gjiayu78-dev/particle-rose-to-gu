@@ -23,6 +23,15 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Fetch CC0 rose OBJ
+        run: |
+          mkdir -p public
+          curl --fail --location --retry 3 --retry-delay 2 \
+            https://happy358.github.io/Images/Model/red_rose3.obj \
+            --output public/red_rose3.obj
+          test -s public/red_rose3.obj
+          wc -c public/red_rose3.obj
+
       - name: Build renderer
         run: npm run build:web
 
