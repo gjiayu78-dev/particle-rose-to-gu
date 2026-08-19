@@ -1,0 +1,58 @@
+/* V9 override: stronger pink heart, code panel stays fully readable */
+
+#scene {
+  filter: saturate(2.15) brightness(1.08) contrast(1.06) hue-rotate(-4deg);
+}
+
+/* Colorize bright particles toward vivid pink while preserving black background. */
+#app::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: rgba(255, 18, 132, 0.28);
+  mix-blend-mode: color;
+}
+
+/* Do NOT dim the code region. Keep it crisp and readable. */
+#code-stage {
+  opacity: 1 !important;
+  filter: none !important;
+  background: linear-gradient(90deg,
+    rgba(4, 6, 10, .97) 0%,
+    rgba(4, 6, 10, .94) 72%,
+    rgba(4, 6, 10, .42) 94%,
+    transparent 100%) !important;
+}
+
+.editor-body,
+.editor-rail {
+  opacity: 1 !important;
+}
+
+.code-line {
+  color: rgba(226, 231, 240, .92) !important;
+}
+
+.code-line .ln {
+  color: rgba(123, 137, 156, .62) !important;
+}
+
+.editor-header {
+  color: rgba(216, 224, 236, .86) !important;
+}
+
+.terminal-line {
+  color: rgba(139, 224, 171, .82) !important;
+}
+
+.file-dot {
+  background: #ff4da0 !important;
+  box-shadow: 0 0 16px rgba(255, 46, 144, .85) !important;
+}
+
+.rail-dot.active {
+  border-color: rgba(255, 75, 166, .92) !important;
+  box-shadow: 0 0 14px rgba(255, 58, 154, .38) !important;
+}

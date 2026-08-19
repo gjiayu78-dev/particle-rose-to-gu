@@ -1,0 +1,177 @@
+:root {
+  color-scheme: dark;
+  font-family: Consolas, 'SFMono-Regular', Menlo, Monaco, monospace;
+  background: #010105;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { background: #010105; }
+
+#app {
+  position: relative;
+  isolation: isolate;
+  background: #010105;
+}
+
+#scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#code-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: min(35vw, 610px);
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  background: linear-gradient(90deg, rgba(3,5,10,.97) 0%, rgba(3,5,10,.92) 76%, rgba(3,5,10,.34) 95%, transparent 100%);
+  opacity: 1;
+  transition: opacity 1.55s ease, transform 1.55s cubic-bezier(.2,.8,.2,1);
+  pointer-events: none;
+  z-index: 3;
+}
+
+#code-stage.fade-out {
+  opacity: 0;
+  transform: translateX(-5vw);
+}
+
+.editor-rail {
+  padding-top: 72px;
+  border-right: 1px solid rgba(255,255,255,.04);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 29px;
+  background: rgba(2,4,8,.87);
+}
+
+.rail-dot {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(182,194,210,.40);
+  border-radius: 3px;
+}
+.rail-dot.active {
+  border-color: rgba(255,115,181,.82);
+  box-shadow: 0 0 12px rgba(255,79,154,.28);
+}
+
+.editor-body {
+  padding: 46px 32px 34px 22px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.editor-header {
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: rgba(194,202,214,.69);
+  font-size: 13px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.file-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff70b3;
+  box-shadow: 0 0 12px rgba(255,112,179,.70);
+}
+.running {
+  margin-left: auto;
+  color: rgba(128,223,166,.65);
+  font-size: 10px;
+  letter-spacing: .11em;
+}
+
+.code-window {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  padding-top: 17px;
+  mask-image: linear-gradient(to bottom, transparent 0, black 5%, black 92%, transparent 100%);
+}
+
+.code-line {
+  min-height: 23px;
+  display: grid;
+  grid-template-columns: 38px minmax(0,1fr);
+  align-items: start;
+  color: rgba(208,214,222,.80);
+  font-size: clamp(11px, .92vw, 15px);
+  line-height: 1.48;
+  white-space: pre-wrap;
+  word-break: break-word;
+  transform: translateY(7px);
+  opacity: 0;
+  animation: lineIn .32s ease forwards;
+}
+.code-line .ln {
+  color: rgba(94,105,119,.42);
+  text-align: right;
+  padding-right: 13px;
+  user-select: none;
+}
+.code-line .kw { color: #d783d9; }
+.code-line .fn { color: #6fb7f1; }
+.code-line .str { color: #dfba79; }
+.code-line .num { color: #b6ce8a; }
+.code-line .comment { color: #677785; }
+.code-line .log { color: #86c99d; }
+.code-line .target { color: #ff9dca; text-shadow: 0 0 11px rgba(255,112,179,.20); }
+
+.terminal-line {
+  height: 29px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255,255,255,.04);
+  color: rgba(125,207,158,.58);
+  font-size: 11px;
+}
+
+#final-message {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%,-50%) scale(.95);
+  opacity: 0;
+  color: rgba(255,238,247,.98);
+  font-family: 'Microsoft YaHei','PingFang SC','Noto Sans CJK SC',sans-serif;
+  font-size: clamp(48px,6vw,94px);
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-shadow: 0 0 12px rgba(255,190,221,.48), 0 0 32px rgba(255,79,154,.21);
+  transition: opacity 1.5s ease, transform 1.7s cubic-bezier(.2,.8,.2,1);
+  z-index: 5;
+  pointer-events: none;
+}
+#final-message.show {
+  opacity: 1;
+  transform: translate(-50%,-50%) scale(1);
+}
+
+#hint {
+  position: absolute;
+  right: 23px;
+  bottom: 17px;
+  color: rgba(200,207,218,.20);
+  font-size: 10px;
+  letter-spacing: .08em;
+  z-index: 4;
+  transition: opacity .8s ease;
+}
+
+@keyframes lineIn { to { transform: translateY(0); opacity: 1; } }
+
+@media (max-width:1180px) {
+  #code-stage { width: 40vw; grid-template-columns: 42px 1fr; }
+  .editor-body { padding-left: 17px; padding-right: 17px; }
+}
