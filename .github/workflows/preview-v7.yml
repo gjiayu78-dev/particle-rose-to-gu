@@ -1,0 +1,48 @@
+name: Preview V7 High-Res Mesh
+
+on:
+  push:
+    branches: [ v7-highres-rose-mesh ]
+  workflow_dispatch:
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build renderer
+        run: npm run build:web
+
+      - name: Install Xvfb runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libxss1 libgbm1 libdrm2 libxkbcommon0
+
+      - name: Capture real runtime at full bouquet state
+        env:
+          ELECTRON_DISABLE_SECURITY_WARNINGS: 'true'
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" npx electron . --capture-preview
+
+      - name: Verify preview
+        run: |
+          test -s preview/V7_ACTUAL_RUNTIME.png
+          file preview/V7_ACTUAL_RUNTIME.png
+
+      - name: Upload real runtime screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: v7-actual-runtime-preview
+          path: preview/V7_ACTUAL_RUNTIME.png
+          if-no-files-found: error
+          compression-level: 0
