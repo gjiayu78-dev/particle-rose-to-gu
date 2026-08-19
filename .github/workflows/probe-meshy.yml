@@ -1,0 +1,31 @@
+name: Probe Meshy CC0 Rose Asset
+
+on:
+  push:
+    branches: [ v7-highres-rose-mesh ]
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch public CC0 model page
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -A 'Mozilla/5.0' -L --fail --retry 3 \
+            'https://www.meshy.ai/3d-models/019dcaa0-9bf6-75e6-92dd-46aca19240cd' \
+            -o /tmp/meshy.html
+          wc -c /tmp/meshy.html
+          grep -Eo 'https?[^"'"'"' <]+\.(glb|gltf|fbx|obj)(\?[^"'"'"' <]+)?' /tmp/meshy.html | sort -u | tee /tmp/model-links.txt || true
+          grep -Eo 'https?[^"'"'"' <]+' /tmp/meshy.html | grep -Ei 'glb|gltf|model_url|cdn|storage|assets' | head -100 | tee /tmp/candidate-links.txt || true
+      - name: Upload probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: meshy-probe
+          path: |
+            /tmp/model-links.txt
+            /tmp/candidate-links.txt
+            /tmp/meshy.html
+          compression-level: 9
