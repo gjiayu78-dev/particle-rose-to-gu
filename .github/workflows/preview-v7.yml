@@ -26,10 +26,10 @@ jobs:
       - name: Build renderer
         run: npm run build:web
 
-      - name: Install Xvfb runtime libraries
+      - name: Check Xvfb
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libasound2t64 libxss1 libgbm1 libdrm2 libxkbcommon0
+          which Xvfb
+          which xvfb-run
 
       - name: Capture real runtime at full bouquet state
         env:
