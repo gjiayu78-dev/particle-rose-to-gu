@@ -12,22 +12,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch public CC0 model page
+      - name: Fetch candidate CC0 models
         shell: bash
         run: |
           set -euxo pipefail
-          curl -A 'Mozilla/5.0' -L --fail --retry 3 \
-            'https://www.meshy.ai/3d-models/019dcaa0-9bf6-75e6-92dd-46aca19240cd' \
-            -o /tmp/meshy.html
-          wc -c /tmp/meshy.html
-          grep -Eo 'https?[^"'"'"' <]+\.(glb|gltf|fbx|obj)(\?[^"'"'"' <]+)?' /tmp/meshy.html | sort -u | tee /tmp/model-links.txt || true
-          grep -Eo 'https?[^"'"'"' <]+' /tmp/meshy.html | grep -Ei 'glb|gltf|model_url|cdn|storage|assets' | head -100 | tee /tmp/candidate-links.txt || true
+          mkdir -p /tmp/meshy-probe
+          python - <<'PY'
+          import json,re,subprocess,html,os
+          models={
+            'single_pink':'https://www.meshy.ai/3d-models/Pink-Rose-019dcaa0-9bf6-75e6-92dd-46aca19240cd',
+            'rose_bouquet':'https://www.meshy.ai/3d-models/Rose-Bouquet-v2-019630b3-93c4-77ae-a12d-acb20151ebdf',
+            'baby_breath':'https://www.meshy.ai/3d-models/019d88e5-c2fd-7d8c-ae7e-603067db3458',
+            'pink_splashed':'https://www.meshy.ai/3d-models/PaintSplashed-Pink-Rose-Bouquet-v2-019cd141-ef55-7a08-bdb5-3b1d0a596d64',
+          }
+          out={}
+          for name,url in models.items():
+            fn=f'/tmp/meshy-probe/{name}.html'
+            subprocess.run(['curl','-A','Mozilla/5.0','-L','--fail','--retry','3',url,'-o',fn],check=True)
+            s=open(fn,encoding='utf-8').read()
+            def one(pat):
+              m=re.search(pat,s)
+              return html.unescape(m.group(1).replace('\\u0026','&').replace('\\/','/')) if m else None
+            meta={
+              'url':url,
+              'vertexCount': one(r'\\?"vertexCount\\?":(\d+)'),
+              'faceCount': one(r'\\?"faceCount\\?":(\d+)'),
+              'modelUrl': one(r'\\?"modelUrl\\?":\\?"([^"\\]+(?:\\.[^"\\]*)?)'),
+              'thumbnail': one(r'\\?"thumbnailNoBgUrl\\?":\\?"([^"\\]+(?:\\.[^"\\]*)?)'),
+              'thumbnailPortrait': one(r'\\?"thumbnailUrl\\?":\\?"([^"\\]+(?:\\.[^"\\]*)?)'),
+            }
+            # robust fallback for URLs that include query strings / escaped characters
+            for k,key in [('modelUrl','modelUrl'),('thumbnail','thumbnailNoBgUrl'),('thumbnailPortrait','thumbnailUrl')]:
+              if not meta[k]:
+                m=re.search(r'\\?"'+key+r'\\?":\\?"(https:[^" ]+?)\\?"',s)
+                if m: meta[k]=m.group(1).replace('\\u0026','&').replace('\\/','/')
+            out[name]=meta
+            thumb=meta['thumbnail'] or meta['thumbnailPortrait']
+            if thumb:
+              subprocess.run(['curl','-L','--fail','--retry','3',thumb,'-o',f'/tmp/meshy-probe/{name}.png'],check=False)
+          open('/tmp/meshy-probe/meta.json','w').write(json.dumps(out,ensure_ascii=False,indent=2))
+          print(json.dumps(out,ensure_ascii=False,indent=2))
+          PY
+          ls -lh /tmp/meshy-probe
       - name: Upload probe
         uses: actions/upload-artifact@v4
         with:
           name: meshy-probe
-          path: |
-            /tmp/model-links.txt
-            /tmp/candidate-links.txt
-            /tmp/meshy.html
+          path: /tmp/meshy-probe
           compression-level: 9
