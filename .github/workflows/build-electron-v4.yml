@@ -1,0 +1,53 @@
+name: Build Dreamy Pink V5
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build Vite renderer
+        run: npm run build:web
+
+      - name: Verify Electron-safe asset paths
+        shell: pwsh
+        run: |
+          $html = Get-Content -LiteralPath "dist/index.html" -Raw
+          Write-Host $html
+          if ($html -match 'src="/assets/' -or $html -match 'href="/assets/') {
+            throw "Vite emitted absolute asset paths; Electron file:// would show a black screen."
+          }
+          if ($html -notmatch '\./assets/') {
+            throw "Expected relative ./assets paths were not found."
+          }
+
+      - name: Build portable EXE
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win portable --x64
+
+      - name: Copy artifact to final name
+        shell: pwsh
+        run: Copy-Item -LiteralPath "release/to_故辞安.exe" -Destination "release/to-gu-cian-dreamy-pink-v5.exe"
+
+      - name: Upload Windows EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: to-gu-cian-dreamy-pink-v5-windows
+          path: release/to-gu-cian-dreamy-pink-v5.exe
+          if-no-files-found: error
+          compression-level: 0
