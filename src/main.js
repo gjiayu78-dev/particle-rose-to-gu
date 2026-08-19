@@ -12,227 +12,172 @@ const terminalLine = document.querySelector('#terminal-line');
 const finalMessage = document.querySelector('#final-message');
 const hint = document.querySelector('#hint');
 
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const smoothstep = (a, b, x) => {
+  const t = clamp((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
+const rand = (a = 0, b = 1) => a + Math.random() * (b - a);
+function randn() {
+  let u = 0, v = 0;
+  while (!u) u = Math.random();
+  while (!v) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
 const renderer = new THREE.WebGLRenderer({
   canvas,
   antialias: true,
-  powerPreference: 'high-performance'
+  powerPreference: 'high-performance',
+  precision: 'highp'
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x020204, 1);
+const pixelRatio = () => Math.min(window.devicePixelRatio || 1, 2.5);
+renderer.setPixelRatio(pixelRatio());
+renderer.setSize(window.innerWidth, window.innerHeight, false);
+renderer.setClearColor(0x010105, 1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.02;
+renderer.toneMappingExposure = 0.92;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(47, window.innerWidth / window.innerHeight, 0.1, 60);
-camera.position.set(0, 0.12, 9.4);
+scene.fog = new THREE.FogExp2(0x010105, 0.012);
+const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 80);
+camera.position.set(0, 0.05, 10.4);
+camera.lookAt(0.7, 0.15, 0);
 
 const composer = new EffectComposer(renderer);
+composer.setPixelRatio(pixelRatio());
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.48, 0.64, 0.12);
-bloom.threshold = 0.12;
-bloom.strength = 1.48;
-bloom.radius = 0.62;
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.62, 0.44, 0.72);
+bloom.threshold = 0.72;
+bloom.strength = 0.62;
+bloom.radius = 0.44;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
 const root = new THREE.Group();
-root.position.x = 1.55;
+root.position.set(1.62, 0.02, 0);
 scene.add(root);
 
-const pointPositions = [];
-const pointStarts = [];
-const pointColors = [];
-const pointSizes = [];
-const pointPhases = [];
+// -----------------------------------------------------------------------------
+// Dense 3D heart point field
+// 78k body particles + 24k surface particles + sparse sparkle field.
+// No bitmap, no low-resolution mesh, no large dot sprites.
+// -----------------------------------------------------------------------------
+const BODY_COUNT = 78000;
+const SURFACE_COUNT = 24000;
+const COUNT = BODY_COUNT + SURFACE_COUNT;
+const target = new Float32Array(COUNT * 3);
+const start = new Float32Array(COUNT * 3);
+const color = new Float32Array(COUNT * 3);
+const size = new Float32Array(COUNT);
+const phase = new Float32Array(COUNT);
+const scatterDir = new Float32Array(COUNT * 3);
 
-const PALETTE = {
-  coral: new THREE.Color('#ff718b'),
-  rose: new THREE.Color('#f24f76'),
-  deep: new THREE.Color('#a8284c'),
-  blush: new THREE.Color('#ffc1d0'),
-  pearl: new THREE.Color('#fff2e8'),
-  cream: new THREE.Color('#f3e7d4'),
-  gold: new THREE.Color('#c9b47d'),
-  leaf: new THREE.Color('#66705d')
-};
-
-function clamp(v, a = 0, b = 1) { return Math.max(a, Math.min(b, v)); }
-function mix(a, b, t) { return a + (b - a) * t; }
-function smoothstep(a, b, x) {
-  const t = clamp((x - a) / (b - a));
-  return t * t * (3 - 2 * t);
-}
-function randn() {
-  let u = 0, v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-}
-function randomUnit() {
-  const v = new THREE.Vector3(randn(), randn(), randn());
-  return v.normalize();
-}
-function colorJitter(base, amount = 0.05) {
-  const c = base.clone();
-  c.r = clamp(c.r + randn() * amount);
-  c.g = clamp(c.g + randn() * amount);
-  c.b = clamp(c.b + randn() * amount);
-  return c;
-}
-function rotateXYZ(v, rx, ry, rz) {
-  const e = new THREE.Euler(rx, ry, rz, 'XYZ');
-  return v.applyEuler(e);
-}
-function pushPoint(target, color, size = 1, scatter = 4.4) {
-  pointPositions.push(target.x, target.y, target.z);
-  const dir = randomUnit();
-  const radius = scatter * (0.38 + Math.random() * 0.8);
-  const start = target.clone().addScaledVector(dir, radius);
-  start.x += randn() * 0.55;
-  start.y += randn() * 0.45;
-  pointStarts.push(start.x, start.y, start.z);
-  pointColors.push(color.r, color.g, color.b);
-  pointSizes.push(size);
-  pointPhases.push(Math.random() * Math.PI * 2);
-}
-
-function rosePoint(localScale, ring, petal, petals, u, v, phase) {
-  const theta = (petal / petals) * Math.PI * 2 + ring * 0.31 + phase;
-  const length = localScale * (0.34 + ring * 0.105);
-  const radial = localScale * 0.06 + length * (0.12 + 0.88 * u);
-  const widthProfile = Math.pow(Math.sin(Math.PI * clamp(u)), 0.58);
-  const width = length * 0.48 * widthProfile * v * (1.0 - ring * 0.018);
-  const ruffle = Math.sin(v * Math.PI * 4.0 + u * 7.0 + phase * 5.0) * localScale * 0.024 * u;
-  const cup = localScale * (0.20 * (1.0 - u) + 0.085 * Math.sin(Math.PI * u) * (1.0 - v * v));
-  const x = radial * Math.cos(theta) - width * Math.sin(theta);
-  const y = radial * Math.sin(theta) + width * Math.cos(theta);
-  const z = cup + ruffle - ring * localScale * 0.014;
-  return new THREE.Vector3(x, y, z);
-}
-
-function addRose(center, scale, palette, tilt = [0, 0, 0], count = 6200) {
-  const ringCounts = [5, 7, 9, 11, 13];
-  const ringWeights = [0.16, 0.19, 0.22, 0.23, 0.20];
-  for (let i = 0; i < count; i++) {
-    let rPick = Math.random();
-    let ring = 0;
-    for (let r = 0, acc = 0; r < ringWeights.length; r++) {
-      acc += ringWeights[r];
-      if (rPick <= acc) { ring = r; break; }
-    }
-    const petals = ringCounts[ring];
-    const petal = Math.floor(Math.random() * petals);
-    const u = Math.pow(Math.random(), 0.64);
-    const v = Math.max(-1, Math.min(1, randn() * 0.52));
-    const p = rosePoint(scale, ring, petal, petals, u, v, ring * 0.19);
-    rotateXYZ(p, tilt[0], tilt[1], tilt[2]);
-    p.add(center);
-    p.x += randn() * scale * 0.012;
-    p.y += randn() * scale * 0.012;
-    p.z += randn() * scale * 0.018;
-
-    const edge = Math.abs(v);
-    const highlightChance = 0.18 + edge * 0.12;
-    const base = Math.random() < highlightChance ? palette[1] : palette[0];
-    const c = colorJitter(base, 0.035);
-    const size = mix(0.62, 1.52, Math.random()) * (ring < 2 ? 0.9 : 1.0);
-    pushPoint(p, c, size, 4.8);
-  }
-
-  // soft mist around each rose gives the reference its airy cloud edge
-  const mistCount = Math.floor(count * 0.20);
-  for (let i = 0; i < mistCount; i++) {
-    const dir = randomUnit();
-    dir.z *= 0.62;
-    const radius = scale * (0.48 + Math.random() * 0.78);
-    const p = center.clone().addScaledVector(dir.normalize(), radius);
-    p.x += randn() * scale * 0.12;
-    p.y += randn() * scale * 0.12;
-    p.z += randn() * scale * 0.10;
-    const c = colorJitter(Math.random() < 0.48 ? palette[1] : PALETTE.pearl, 0.045);
-    pushPoint(p, c, 0.48 + Math.random() * 0.62, 5.0);
-  }
-}
-
-const flowers = [
-  { p: [-0.10, 1.56,  0.22], s: 0.88, pal: [PALETTE.coral, PALETTE.blush], tilt: [-0.10, 0.08, 0.04] },
-  { p: [-1.16, 1.28, -0.05], s: 0.78, pal: [PALETTE.rose, PALETTE.blush], tilt: [0.06, -0.18, -0.12] },
-  { p: [ 1.04, 1.24, -0.08], s: 0.82, pal: [PALETTE.coral, PALETTE.pearl], tilt: [-0.04, 0.18, 0.10] },
-  { p: [-0.67, 1.92, -0.34], s: 0.64, pal: [PALETTE.blush, PALETTE.pearl], tilt: [0.08, -0.10, 0.06] },
-  { p: [ 0.67, 1.92,  0.18], s: 0.66, pal: [PALETTE.rose, PALETTE.blush], tilt: [-0.10, 0.12, -0.06] },
-  { p: [-1.55, 0.72,  0.14], s: 0.64, pal: [PALETTE.pearl, PALETTE.cream], tilt: [0.15, -0.22, -0.10] },
-  { p: [ 1.53, 0.70,  0.12], s: 0.67, pal: [PALETTE.pearl, PALETTE.blush], tilt: [-0.08, 0.24, 0.12] },
-  { p: [-0.62, 0.72,  0.58], s: 0.68, pal: [PALETTE.coral, PALETTE.pearl], tilt: [-0.02, -0.08, 0.02] },
-  { p: [ 0.55, 0.70,  0.62], s: 0.72, pal: [PALETTE.rose, PALETTE.blush], tilt: [0.04, 0.12, -0.02] },
-  { p: [-1.55, 1.56,  0.42], s: 0.55, pal: [PALETTE.blush, PALETTE.pearl], tilt: [0.04, -0.28, 0.12] },
-  { p: [ 1.46, 1.58,  0.44], s: 0.57, pal: [PALETTE.coral, PALETTE.pearl], tilt: [-0.06, 0.25, -0.08] },
-  { p: [ 0.00, 0.94, -0.58], s: 0.62, pal: [PALETTE.pearl, PALETTE.cream], tilt: [0.08, 0.02, 0.06] },
-  { p: [-0.18, 2.22,  0.02], s: 0.51, pal: [PALETTE.coral, PALETTE.blush], tilt: [-0.08, 0.00, 0.02] }
+const palette = [
+  new THREE.Color('#ff4f9a'),
+  new THREE.Color('#ff79b7'),
+  new THREE.Color('#ff9fca'),
+  new THREE.Color('#ffc7df'),
+  new THREE.Color('#fff0f7')
 ];
+const tempColor = new THREE.Color();
 
-for (const f of flowers) {
-  addRose(new THREE.Vector3(...f.p), f.s, f.pal, f.tilt, f.s > 0.8 ? 7000 : 5300);
+function heartOutline(t) {
+  const x = 16 * Math.pow(Math.sin(t), 3);
+  const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+  return [x / 17.2, y / 17.2];
 }
 
-// airy baby's-breath / bouquet filler clouds
-const fillerCenters = [
-  [-1.78,1.08,-.28],[-1.28,.46,.26],[-.82,1.34,.78],[-.25,.44,.72],[.35,.42,.74],
-  [.92,1.38,.72],[1.66,1.04,-.28],[1.22,.40,.20],[-.98,2.04,.18],[.98,2.05,.05],
-  [-1.72,1.72,.10],[1.72,1.70,.12],[-.22,1.60,-.74],[.48,1.48,-.72]
-];
-for (const fc of fillerCenters) {
-  const center = new THREE.Vector3(...fc);
-  for (let i = 0; i < 880; i++) {
-    const p = center.clone();
-    p.x += randn() * 0.32;
-    p.y += randn() * 0.27;
-    p.z += randn() * 0.27;
-    const r = Math.random();
-    const base = r < .55 ? PALETTE.pearl : r < .84 ? PALETTE.cream : PALETTE.gold;
-    pushPoint(p, colorJitter(base, 0.035), 0.40 + Math.random() * 0.72, 5.4);
+function setParticle(i, r, shellBias) {
+  const t = Math.random() * Math.PI * 2;
+  const [ox, oy] = heartOutline(t);
+  const rr = r;
+  let x = ox * rr;
+  let y = oy * rr;
+
+  // Give the heart real depth. Thickness is greatest toward the middle and
+  // naturally collapses at the silhouette edge.
+  const depthLimit = 0.10 + 0.68 * Math.pow(Math.max(0, 1 - rr * rr), 0.48);
+  let z;
+  if (shellBias) {
+    const side = Math.random() < 0.5 ? -1 : 1;
+    z = side * depthLimit * rand(0.72, 1.0);
+  } else {
+    z = rand(-depthLimit, depthLimit) * (0.42 + 0.58 * Math.random());
   }
+
+  // Subtle organic irregularity keeps the point cloud from looking computer-flat.
+  x += randn() * 0.008;
+  y += randn() * 0.008;
+  z += randn() * 0.006;
+
+  // Scene scale and slight vertical lift.
+  x *= 2.72;
+  y = y * 2.72 + 0.14;
+  z *= 2.22;
+
+  const k = i * 3;
+  target[k] = x;
+  target[k + 1] = y;
+  target[k + 2] = z;
+
+  // Formation starts from a broad three-dimensional cloud.
+  let dx = randn(), dy = randn(), dz = randn();
+  const inv = 1 / Math.max(0.0001, Math.hypot(dx, dy, dz));
+  dx *= inv; dy *= inv; dz *= inv;
+  const d = rand(3.4, 7.4);
+  start[k] = x + dx * d + randn() * 0.24;
+  start[k + 1] = y + dy * d + randn() * 0.24;
+  start[k + 2] = z + dz * d + randn() * 0.24;
+
+  // Direction used during the final dispersal.
+  let ex = x * 0.42 + randn() * 0.55;
+  let ey = y * 0.32 + rand(0.15, 0.80);
+  let ez = z * 0.30 + randn() * 0.55;
+  const einv = 1 / Math.max(0.0001, Math.hypot(ex, ey, ez));
+  scatterDir[k] = ex * einv;
+  scatterDir[k + 1] = ey * einv;
+  scatterDir[k + 2] = ez * einv;
+
+  const edge = shellBias ? 1 : rr;
+  const pick = Math.random();
+  let base;
+  if (pick < 0.10) base = palette[4];
+  else if (pick < 0.35) base = palette[3];
+  else if (pick < 0.67) base = palette[2];
+  else if (pick < 0.88) base = palette[1];
+  else base = palette[0];
+  tempColor.copy(base);
+  tempColor.offsetHSL(rand(-0.012, 0.012), rand(-0.035, 0.035), rand(-0.035, 0.035) + edge * 0.012);
+  color[k] = tempColor.r;
+  color[k + 1] = tempColor.g;
+  color[k + 2] = tempColor.b;
+
+  size[i] = shellBias ? rand(0.58, 1.34) : rand(0.42, 1.02);
+  phase[i] = rand(0, Math.PI * 2);
 }
 
-// stems converge to a narrow handle, matching the reference bouquet silhouette
-const handle = new THREE.Vector3(0.03, -2.18, -0.04);
-for (const f of flowers) {
-  const top = new THREE.Vector3(...f.p);
-  top.y -= f.s * 0.30;
-  const stemColor = Math.random() < .58 ? PALETTE.cream : PALETTE.deep;
-  for (let i = 0; i < 520; i++) {
-    const t = Math.random();
-    const p = top.clone().lerp(handle, Math.pow(t, 0.83));
-    const spread = mix(0.022, 0.06, 1 - t);
-    p.x += randn() * spread;
-    p.z += randn() * spread;
-    p.y += randn() * 0.018;
-    pushPoint(p, colorJitter(stemColor, 0.028), 0.45 + Math.random() * 0.7, 4.6);
-  }
+for (let i = 0; i < BODY_COUNT; i++) {
+  // sqrt gives a natural dense fill while still preserving the heart silhouette.
+  const r = Math.sqrt(Math.random()) * 0.965;
+  setParticle(i, r, false);
 }
-
-// gauzy wrapping/fibers around the lower bouquet
-for (let i = 0; i < 7200; i++) {
-  const t = Math.random();
-  const y = mix(-0.25, -2.05, t);
-  const radius = mix(1.28, 0.25, t) * (0.45 + Math.random() * 0.7);
-  const a = Math.random() * Math.PI * 2;
-  const p = new THREE.Vector3(Math.cos(a) * radius, y, Math.sin(a) * radius * 0.48);
-  p.x += randn() * 0.05;
-  p.y += randn() * 0.045;
-  p.z += randn() * 0.045;
-  const base = Math.random() < .64 ? PALETTE.pearl : PALETTE.deep;
-  pushPoint(p, colorJitter(base, 0.04), 0.42 + Math.random() * 0.65, 4.5);
+for (let i = BODY_COUNT; i < COUNT; i++) {
+  // Thin high-density shell for a crisp contour at full screen.
+  const r = rand(0.955, 1.002);
+  setParticle(i, r, true);
 }
 
 const geometry = new THREE.BufferGeometry();
-geometry.setAttribute('position', new THREE.Float32BufferAttribute(pointPositions, 3));
-geometry.setAttribute('aStart', new THREE.Float32BufferAttribute(pointStarts, 3));
-geometry.setAttribute('aColor', new THREE.Float32BufferAttribute(pointColors, 3));
-geometry.setAttribute('aSize', new THREE.Float32BufferAttribute(pointSizes, 1));
-geometry.setAttribute('aPhase', new THREE.Float32BufferAttribute(pointPhases, 1));
+geometry.setAttribute('position', new THREE.BufferAttribute(target, 3));
+geometry.setAttribute('aStart', new THREE.BufferAttribute(start, 3));
+geometry.setAttribute('aColor', new THREE.BufferAttribute(color, 3));
+geometry.setAttribute('aSize', new THREE.BufferAttribute(size, 1));
+geometry.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+geometry.setAttribute('aScatter', new THREE.BufferAttribute(scatterDir, 3));
 
-const particleMaterial = new THREE.ShaderMaterial({
+const material = new THREE.ShaderMaterial({
   transparent: true,
   depthWrite: false,
   depthTest: true,
@@ -241,214 +186,261 @@ const particleMaterial = new THREE.ShaderMaterial({
   uniforms: {
     uTime: { value: 0 },
     uMorph: { value: 0 },
-    uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
-    uOpacity: { value: 1 }
+    uExplode: { value: 0 },
+    uOpacity: { value: 1 },
+    uPixelRatio: { value: pixelRatio() }
   },
   vertexShader: `
     uniform float uTime;
     uniform float uMorph;
+    uniform float uExplode;
     uniform float uPixelRatio;
     attribute vec3 aStart;
     attribute vec3 aColor;
+    attribute vec3 aScatter;
     attribute float aSize;
     attribute float aPhase;
     varying vec3 vColor;
-    varying float vTwinkle;
+    varying float vAlpha;
 
-    mat2 rot(float a) {
-      float c = cos(a), s = sin(a);
-      return mat2(c, -s, s, c);
-    }
+    float ease(float x){ x=clamp(x,0.0,1.0); return x*x*(3.0-2.0*x); }
 
-    void main() {
-      float p = uMorph * uMorph * (3.0 - 2.0 * uMorph);
-      vec3 delta = aStart - position;
-      float spin = (1.0 - p) * (2.2 + 0.9 * sin(aPhase * 1.7));
-      delta.xz = rot(spin) * delta.xz;
-      vec3 pos = position + delta * (1.0 - p);
+    void main(){
+      float m=ease(uMorph);
+      vec3 p=mix(aStart,position,m);
 
-      float turbulence = (1.0 - p);
-      pos.x += sin(uTime * 1.3 + aPhase * 2.1) * 0.12 * turbulence;
-      pos.y += cos(uTime * 1.1 + aPhase * 1.4) * 0.10 * turbulence;
-      pos.z += sin(uTime * 0.9 + aPhase) * 0.10 * turbulence;
+      // Micro motion only after the heart has formed.
+      float breathe=1.0+0.014*sin(uTime*2.0);
+      p.xy*=mix(1.0,breathe,m);
+      p+=vec3(
+        sin(uTime*.54+aPhase)*.006,
+        cos(uTime*.47+aPhase*1.17)*.006,
+        sin(uTime*.39+aPhase*.73)*.007
+      )*m;
 
-      float settled = smoothstep(0.80, 1.0, p);
-      pos += vec3(
-        sin(uTime * 0.72 + aPhase * 2.0),
-        cos(uTime * 0.66 + aPhase * 1.3),
-        sin(uTime * 0.58 + aPhase * 0.7)
-      ) * 0.006 * settled;
+      float e=ease(uExplode);
+      p+=aScatter*(2.0+fract(aPhase*.173)*4.8)*e*e;
+      p.y-=e*e*e*1.75;
 
-      vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-      float depthScale = 32.0 / max(2.8, -mvPosition.z);
-      gl_PointSize = clamp(aSize * uPixelRatio * depthScale, 1.15, 9.5);
-      gl_Position = projectionMatrix * mvPosition;
-      vColor = aColor;
-      vTwinkle = 0.92 + 0.08 * sin(uTime * 2.0 + aPhase * 3.0);
+      vec4 mv=modelViewMatrix*vec4(p,1.0);
+      gl_Position=projectionMatrix*mv;
+      float perspective=10.4/max(2.0,-mv.z);
+      gl_PointSize=clamp(aSize*uPixelRatio*perspective,1.0,3.15);
+      vColor=aColor;
+      vAlpha=(0.34+0.58*m)*(1.0-smoothstep(.66,1.0,e));
     }
   `,
   fragmentShader: `
     uniform float uOpacity;
     varying vec3 vColor;
-    varying float vTwinkle;
-
-    void main() {
-      vec2 q = gl_PointCoord - vec2(0.5);
-      float r2 = dot(q, q);
-      if (r2 > 0.25) discard;
-      float gaussian = exp(-r2 * 16.0);
-      float core = exp(-r2 * 72.0);
-      float alpha = gaussian * 0.88 * uOpacity;
-      vec3 color = vColor * (0.80 + core * 0.72) * vTwinkle;
-      gl_FragColor = vec4(color, alpha);
+    varying float vAlpha;
+    void main(){
+      vec2 uv=gl_PointCoord-.5;
+      float r2=dot(uv,uv);
+      if(r2>.25) discard;
+      float soft=exp(-r2*17.0);
+      gl_FragColor=vec4(vColor,soft*vAlpha*uOpacity);
     }
   `
 });
+const heart = new THREE.Points(geometry, material);
+root.add(heart);
 
-const bouquet = new THREE.Points(geometry, particleMaterial);
-root.add(bouquet);
-
-// white rotating 3D reference box
-const boxGeometry = new THREE.BoxGeometry(5.75, 5.65, 4.9);
-const edges = new THREE.EdgesGeometry(boxGeometry);
-const boxMaterial = new THREE.LineBasicMaterial({ color: 0xf2f4f7, transparent: true, opacity: 0.54 });
-const box = new THREE.LineSegments(edges, boxMaterial);
-box.position.y = 0.05;
-root.add(box);
-
-// faint center axis lines mimic the source render without creating a glowing ring/background
-const axisMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 });
-const axisGeo = new THREE.BufferGeometry().setFromPoints([
-  new THREE.Vector3(0, -2.85, 0), new THREE.Vector3(0, 2.85, 0),
-  new THREE.Vector3(-2.85, 0, 0), new THREE.Vector3(2.85, 0, 0)
-]);
-const axes = new THREE.LineSegments(axisGeo, axisMat);
-root.add(axes);
-
-const CODE = [
-  ['comment', '// GPU rose field — fragment/vertex pipeline'],
-  ['code', '<span class="kw">import</span> * <span class="kw">as</span> THREE <span class="kw">from</span> <span class="str">\'three\'</span>;'],
-  ['code', '<span class="kw">const</span> renderer = <span class="kw">new</span> THREE.<span class="fn">WebGLRenderer</span>({ powerPreference: <span class="str">\'high-performance\'</span> });'],
-  ['code', 'renderer.toneMapping = THREE.ACESFilmicToneMapping;'],
-  ['code', '<span class="kw">const</span> bloom = <span class="kw">new</span> <span class="fn">UnrealBloomPass</span>(viewport, <span class="num">1.48</span>, <span class="num">0.62</span>, <span class="num">0.12</span>);'],
-  ['blank', ''],
-  ['code', '<span class="kw">const</span> particles = <span class="num">120000</span>;'],
-  ['code', '<span class="kw">const</span> palette = [coral, blush, pearl, cream, gold];'],
-  ['code', '<span class="kw">for</span> (<span class="kw">const</span> flower <span class="kw">of</span> bouquet) {'],
-  ['code', '  flower.<span class="fn">samplePetalSurface</span>();'],
-  ['code', '  flower.<span class="fn">addGaussianMist</span>();'],
-  ['code', '}'],
-  ['log', '[gpu] petal target texture ........ ready'],
-  ['log', '[gpu] gaussian point shader ....... ready'],
-  ['log', '[gpu] bloom / tone mapping ........ ready'],
-  ['blank', ''],
-  ['code', '<span class="kw">function</span> <span class="fn">seekTarget</span>(p, target, t) {'],
-  ['code', '  <span class="kw">return</span> <span class="fn">mix</span>(p, target, <span class="fn">smoothstep</span>(<span class="num">0.0</span>, <span class="num">1.0</span>, t));'],
-  ['code', '}'],
-  ['log', '[compute] particles  16384 / 120000'],
-  ['log', '[compute] particles  49152 / 120000'],
-  ['log', '[compute] particles  81920 / 120000'],
-  ['log', '[compute] particles 120000 / 120000  OK'],
-  ['blank', ''],
-  ['code', 'box.rotation.y += delta * <span class="num">0.13</span>;'],
-  ['code', 'bouquet.rotation.y = box.rotation.y;'],
-  ['code', '<span class="kw">const</span> target = <span class="target str">\'故辞安\'</span>;'],
-  ['code', '<span class="fn">renderFor</span>(target);'],
-  ['log', '[render] target locked ............ 故辞安'],
-  ['log', '[render] final frame .............. composing'],
-  ['code', '<span class="kw">while</span> (true) { <span class="fn">requestAnimationFrame</span>(render); }'],
-  ['comment', '// every particle has arrived exactly where it belongs']
-];
-
-let renderedCodeIndex = 0;
-let lineNumber = 31;
-let lastCycle = 0;
-function resetCode() {
-  codeWindow.innerHTML = '';
-  renderedCodeIndex = 0;
-  lineNumber = 31;
-  codeStage.classList.remove('fade-out');
-  finalMessage.classList.remove('show');
-  hint.style.opacity = '1';
+// Fine additive sparkles across the heart surface.
+const SPARK_COUNT = 4200;
+const sparkPos = new Float32Array(SPARK_COUNT * 3);
+const sparkColor = new Float32Array(SPARK_COUNT * 3);
+const sparkSize = new Float32Array(SPARK_COUNT);
+const sparkPhase = new Float32Array(SPARK_COUNT);
+for (let i = 0; i < SPARK_COUNT; i++) {
+  const t = Math.random() * Math.PI * 2;
+  const [ox, oy] = heartOutline(t);
+  const r = rand(0.82, 1.015);
+  const depthLimit = 0.10 + 0.68 * Math.pow(Math.max(0, 1 - r*r), 0.48);
+  const k = i * 3;
+  sparkPos[k] = ox * r * 2.72 + randn()*0.012;
+  sparkPos[k+1] = oy * r * 2.72 + 0.14 + randn()*0.012;
+  sparkPos[k+2] = rand(-depthLimit, depthLimit) * 2.22;
+  const c = new THREE.Color(Math.random()<0.62 ? '#ffd2e5' : Math.random()<0.76 ? '#fff3f9' : '#ff78b5');
+  sparkColor[k]=c.r; sparkColor[k+1]=c.g; sparkColor[k+2]=c.b;
+  sparkSize[i]=rand(0.48,1.35);
+  sparkPhase[i]=rand(0,Math.PI*2);
 }
-function addCodeLine(item) {
-  const [type, html] = item;
-  const line = document.createElement('div');
-  line.className = 'code-line';
-  if (type === 'blank') {
-    line.innerHTML = `<span class="ln">${lineNumber++}</span><span>&nbsp;</span>`;
-  } else if (type === 'comment') {
-    line.innerHTML = `<span class="ln">${lineNumber++}</span><span class="comment">${html}</span>`;
-  } else if (type === 'log') {
-    line.innerHTML = `<span class="ln">${lineNumber++}</span><span class="log">${html}</span>`;
-  } else {
-    line.innerHTML = `<span class="ln">${lineNumber++}</span><span>${html}</span>`;
+const sparkGeometry = new THREE.BufferGeometry();
+sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPos,3));
+sparkGeometry.setAttribute('aColor', new THREE.BufferAttribute(sparkColor,3));
+sparkGeometry.setAttribute('aSize', new THREE.BufferAttribute(sparkSize,1));
+sparkGeometry.setAttribute('aPhase', new THREE.BufferAttribute(sparkPhase,1));
+const sparkMaterial = new THREE.ShaderMaterial({
+  transparent:true,
+  depthWrite:false,
+  blending:THREE.AdditiveBlending,
+  toneMapped:false,
+  uniforms:{
+    uTime:{value:0},
+    uVisible:{value:0},
+    uExplode:{value:0},
+    uPixelRatio:{value:pixelRatio()}
+  },
+  vertexShader:`
+    uniform float uTime,uVisible,uExplode,uPixelRatio;
+    attribute vec3 aColor;
+    attribute float aSize,aPhase;
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main(){
+      vec3 p=position;
+      float e=smoothstep(0.0,1.0,uExplode);
+      p*=1.0+e*1.15;
+      p.y-=e*e*1.3;
+      vec4 mv=modelViewMatrix*vec4(p,1.0);
+      gl_Position=projectionMatrix*mv;
+      gl_PointSize=clamp(aSize*uPixelRatio*(11.2/max(2.0,-mv.z)),1.0,4.0);
+      float tw=pow(.5+.5*sin(uTime*2.4+aPhase),7.0);
+      vColor=aColor*1.75;
+      vAlpha=uVisible*(.12+.88*tw)*(1.0-smoothstep(.62,1.0,e));
+    }
+  `,
+  fragmentShader:`
+    varying vec3 vColor;
+    varying float vAlpha;
+    void main(){
+      vec2 uv=gl_PointCoord-.5;
+      float d=length(uv);
+      if(d>.5) discard;
+      gl_FragColor=vec4(vColor,exp(-d*d*28.0)*vAlpha);
+    }
+  `
+});
+root.add(new THREE.Points(sparkGeometry,sparkMaterial));
+
+// Sparse ambient particles around the box for depth; they never become a halo.
+const AMBIENT_COUNT = 4200;
+const ambientPos = new Float32Array(AMBIENT_COUNT * 3);
+const ambientCol = new Float32Array(AMBIENT_COUNT * 3);
+const ambientSize = new Float32Array(AMBIENT_COUNT);
+const ambientPhase = new Float32Array(AMBIENT_COUNT);
+for(let i=0;i<AMBIENT_COUNT;i++){
+  const k=i*3;
+  ambientPos[k]=rand(-3.2,3.2);
+  ambientPos[k+1]=rand(-3.0,3.0);
+  ambientPos[k+2]=rand(-2.3,2.3);
+  const c=new THREE.Color(Math.random()<0.72?'#f58ab8':'#ffe6f2');
+  ambientCol[k]=c.r;ambientCol[k+1]=c.g;ambientCol[k+2]=c.b;
+  ambientSize[i]=rand(.30,.80);
+  ambientPhase[i]=rand(0,Math.PI*2);
+}
+const ag=new THREE.BufferGeometry();
+ag.setAttribute('position',new THREE.BufferAttribute(ambientPos,3));
+ag.setAttribute('aColor',new THREE.BufferAttribute(ambientCol,3));
+ag.setAttribute('aSize',new THREE.BufferAttribute(ambientSize,1));
+ag.setAttribute('aPhase',new THREE.BufferAttribute(ambientPhase,1));
+const am=new THREE.ShaderMaterial({
+  transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,
+  uniforms:{uTime:{value:0},uAlpha:{value:.15},uPixelRatio:{value:pixelRatio()}},
+  vertexShader:`uniform float uTime,uPixelRatio;attribute vec3 aColor;attribute float aSize,aPhase;varying vec3 vColor;varying float vA;void main(){vec3 p=position;p.y+=sin(uTime*.19+aPhase)*.08;p.x+=cos(uTime*.16+aPhase*.7)*.05;vec4 mv=modelViewMatrix*vec4(p,1.);gl_Position=projectionMatrix*mv;gl_PointSize=clamp(aSize*uPixelRatio*(9.0/max(2.,-mv.z)),1.,2.2);vColor=aColor;vA=.22+.22*sin(uTime*.8+aPhase)*.5;}`,
+  fragmentShader:`uniform float uAlpha;varying vec3 vColor;varying float vA;void main(){vec2 uv=gl_PointCoord-.5;float r2=dot(uv,uv);if(r2>.25)discard;gl_FragColor=vec4(vColor,exp(-r2*22.)*vA*uAlpha);}`
+});
+root.add(new THREE.Points(ag,am));
+
+// Thin white 3D frame retains the original reference composition.
+const wireMat = new THREE.LineBasicMaterial({ color:0xffffff, transparent:true, opacity:0.48, toneMapped:false });
+const wireBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(6.25,6.15,4.85)), wireMat);
+wireBox.position.set(0,0.16,-0.18);
+root.add(wireBox);
+
+const codeLines = [
+  `<span class="comment">// V8 · high-density pink particle heart</span>`,
+  `<span class="kw">const</span> BODY = <span class="num">78000</span>;`,
+  `<span class="kw">const</span> SURFACE = <span class="num">24000</span>;`,
+  `<span class="kw">const</span> HEART_PARTICLES = BODY + SURFACE;`,
+  `<span class="comment">// 3D volume + crisp surface shell</span>`,
+  `<span class="kw">for</span> (<span class="kw">let</span> i = <span class="num">0</span>; i < HEART_PARTICLES; i++) {`,
+  `  <span class="fn">sampleHeartVolume</span>(i);`,
+  `  <span class="fn">assignPinkGradient</span>(i);`,
+  `}`,
+  `<span class="fn">morphFromCloud</span>(heart);`,
+  `<span class="fn">addMicroSparkles</span>(<span class="num">4200</span>);`,
+  `<span class="fn">rotateTogether</span>(heart, wireframe);`,
+  `<span class="comment">// final phase: release the heart into particles</span>`,
+  `<span class="fn">disperse</span>(heart);`,
+  `<span class="kw">const</span> target = <span class="str target">'故辞安'</span>;`,
+  `<span class="fn">renderFor</span>(target);`,
+  `<span class="log">✓ 102000 heart particles ready</span>`
+];
+let codeCursor=0,nextCodeAt=.45,codeCycle=-1;
+function resetCode(){
+  codeWindow.innerHTML='';codeCursor=0;nextCodeAt=.45;
+  terminalLine.textContent='initializing GPU heart field...';
+}
+function updateCode(t,cycle){
+  if(cycle!==codeCycle){codeCycle=cycle;resetCode();}
+  if(t>nextCodeAt&&codeCursor<codeLines.length){
+    const row=document.createElement('div');
+    row.className='code-line';
+    row.innerHTML=`<span class="ln">${88+codeCursor}</span><span>${codeLines[codeCursor]}</span>`;
+    codeWindow.appendChild(row);
+    while(codeWindow.children.length>22)codeWindow.removeChild(codeWindow.firstChild);
+    codeCursor++;
+    nextCodeAt+=rand(.32,.56);
+    if(codeCursor===codeLines.length)terminalLine.textContent='render loop active · waiting for final transition';
   }
-  codeWindow.appendChild(line);
-  if (codeWindow.children.length > 24) codeWindow.removeChild(codeWindow.firstElementChild);
-  codeWindow.scrollTop = codeWindow.scrollHeight;
 }
 
 const clock = new THREE.Clock();
-const cycleLength = 34;
-let elapsedTotal = 0;
+const CYCLE = 39.0;
+let lastCycle = -1;
+function animate(){
+  requestAnimationFrame(animate);
+  const elapsed=clock.getElapsedTime();
+  const cycleIndex=Math.floor(elapsed/CYCLE);
+  const t=elapsed%CYCLE;
 
-function animate() {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  elapsedTotal += dt;
-  const t = elapsedTotal % cycleLength;
+  if(cycleIndex!==lastCycle){
+    lastCycle=cycleIndex;
+    codeStage.classList.remove('fade-out');
+    finalMessage.classList.remove('show');
+    hint.style.opacity='1';
+  }
+  updateCode(t,cycleIndex);
 
-  if (t < lastCycle) resetCode();
-  lastCycle = t;
+  const morph=smoothstep(1.5,10.8,t);
+  const sparkle=smoothstep(6.0,12.0,t)*(1-smoothstep(27.0,31.0,t));
+  const explode=smoothstep(26.0,32.5,t);
 
-  const revealTarget = Math.min(CODE.length, Math.floor(Math.max(0, t - 0.25) * 2.15));
-  while (renderedCodeIndex < revealTarget) addCodeLine(CODE[renderedCodeIndex++]);
+  material.uniforms.uTime.value=elapsed;
+  material.uniforms.uMorph.value=morph;
+  material.uniforms.uExplode.value=explode;
+  sparkMaterial.uniforms.uTime.value=elapsed;
+  sparkMaterial.uniforms.uVisible.value=sparkle;
+  sparkMaterial.uniforms.uExplode.value=explode;
+  am.uniforms.uTime.value=elapsed;
+  am.uniforms.uAlpha.value=.12+.08*morph;
 
-  const morph = smoothstep(2.0, 11.7, t);
-  particleMaterial.uniforms.uMorph.value = morph;
-  particleMaterial.uniforms.uTime.value = elapsedTotal;
+  // Slow 3D presentation. Heart and frame move as one object.
+  root.rotation.y=Math.sin(elapsed*.19)*.16+elapsed*.022;
+  root.rotation.x=Math.sin(elapsed*.14)*.030;
+  root.rotation.z=Math.sin(elapsed*.11)*.012;
+  wireMat.opacity=.48*(1-smoothstep(.72,1.0,explode));
 
-  let rootX = 1.55;
-  if (t > 22.0) rootX = mix(1.55, 0.0, smoothstep(22.0, 25.0, t));
-  root.position.x = rootX;
-
-  const formed = smoothstep(8.5, 12.0, t);
-  const orbitSpeed = mix(0.055, 0.105, formed);
-  root.rotation.y = -0.22 + elapsedTotal * orbitSpeed;
-  root.rotation.x = -0.035 + Math.sin(elapsedTotal * 0.22) * 0.025;
-
-  const finalPhase = smoothstep(23.0, 26.0, t);
-  camera.position.z = mix(9.4, 8.7, finalPhase);
-  camera.position.y = mix(0.12, 0.20, finalPhase);
-  camera.lookAt(0, 0.0, 0);
-
-  boxMaterial.opacity = mix(0.54, 0.24, finalPhase);
-  axisMat.opacity = mix(0.15, 0.04, finalPhase);
-  particleMaterial.uniforms.uOpacity.value = mix(1.0, 0.62, smoothstep(25.5, 28.0, t));
-
-  if (t >= 22.2) codeStage.classList.add('fade-out');
-  if (t >= 24.6) {
+  if(t>29.7)codeStage.classList.add('fade-out');
+  if(t>34.2){
     finalMessage.classList.add('show');
-    hint.style.opacity = '0';
+    hint.style.opacity='0';
   }
 
-  const pct = Math.round(morph * 100);
-  terminalLine.textContent = morph < 1 ? `GPU particle convergence ${pct.toString().padStart(3, ' ')}%` : 'bouquet field stable · bloom pass active';
-
   composer.render();
-  requestAnimationFrame(animate);
 }
-
-resetCode();
 animate();
 
-window.addEventListener('resize', () => {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  camera.aspect = w / h;
+window.addEventListener('resize',()=>{
+  camera.aspect=window.innerWidth/window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(w, h);
-  composer.setSize(w, h);
-  particleMaterial.uniforms.uPixelRatio.value = Math.min(window.devicePixelRatio, 2);
+  renderer.setPixelRatio(pixelRatio());
+  renderer.setSize(window.innerWidth,window.innerHeight,false);
+  composer.setPixelRatio(pixelRatio());
+  composer.setSize(window.innerWidth,window.innerHeight);
+  material.uniforms.uPixelRatio.value=pixelRatio();
+  sparkMaterial.uniforms.uPixelRatio.value=pixelRatio();
+  am.uniforms.uPixelRatio.value=pixelRatio();
 });
